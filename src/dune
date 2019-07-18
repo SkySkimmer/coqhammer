@@ -1,8 +1,8 @@
 (library
  (name hammer_plugin)
- (public_name coq.plugins.hammer)
+ (public_name coq-hammer)
  (synopsis "Coq's Hammer Plugin")
- (flags :standard -warn-error -3-8-14-34)
+ (flags :standard -rectypes -warn-error -3-8-9-14-27-34)
  (libraries coq.plugins.ltac))
 
 (rule

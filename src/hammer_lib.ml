@@ -175,9 +175,8 @@ let make_good =
   | Context.Named.Declaration.LocalDef(x, y, z) ->
      (x.binder_name, Some (econstr_to_constr y), econstr_to_constr z)
 
-let get_hyps gl =
+let get_hyps sigma gl =
   let env = Proofview.Goal.env gl in
-  let sigma = Proofview.Goal.sigma gl in
   List.map (hhdef_of_hyp env sigma ++ make_good) (Proofview.Goal.hyps gl)
 
 let get_goal gl =
@@ -322,9 +321,8 @@ let get_tac_args env sigma deps defs =
   let args = [to_ltac_val tdeps; to_ltac_val tdefs] in
   (deps, defs, args)
 
-let check_goal_prop gl =
+let check_goal_prop evmap gl =
   let env = Proofview.Goal.env gl in
-  let evmap = Proofview.Goal.sigma gl in
   let tp = EConstr.to_constr evmap (Retyping.get_type_of env evmap (Proofview.Goal.concl gl)) in
   match Constr.kind tp with
   | Sort s -> Sorts.family s = InProp
@@ -495,23 +493,22 @@ let try_tactic (f : unit -> unit Proofview.tactic) =
 
 let try_goal_tactic f =
   Proofview.Goal.enter
-    begin fun gl ->
-      try_tactic (fun () -> f gl)
+    begin fun sigma gl ->
+      try_tactic (fun () -> f sigma gl)
     end
 
 (***************************************************************************************)
 
 let hammer_tac () =
   Proofview.Goal.enter
-    begin fun gl ->
+    begin fun sigma gl ->
       let env = Proofview.Goal.env gl in
-      let sigma = Proofview.Goal.sigma gl in
         Proofview.tclOR
           (try_scrush ())
           begin fun _ ->
             try_tactic begin fun () ->
               let goal = get_goal gl in
-              let hyps = get_hyps gl in
+              let hyps = get_hyps sigma gl in
               let defs = get_defs env sigma in
               if !Opt.debug_mode then
                 Msg.info ("Found " ^ string_of_int (List.length defs) ^ " accessible Coq objects.");
@@ -533,11 +530,10 @@ let hammer_tac () =
 
 let predict_tac n pred_method =
   try_goal_tactic
-    begin fun gl ->
+    begin fun sigma gl ->
       let env = Proofview.Goal.env gl in
-      let sigma = Proofview.Goal.sigma gl in
       let goal = get_goal gl in
-      let hyps = get_hyps gl in
+      let hyps = get_hyps sigma gl in
       let defs = get_defs env sigma in
       if !Opt.debug_mode then
         Msg.info ("Found " ^ string_of_int (List.length defs) ^ " accessible Coq objects.");
@@ -567,8 +563,8 @@ let predict_tac n pred_method =
 
 let hammer_features_tac () =
   try_goal_tactic
-    begin fun gl ->
-      let features = Features.get_goal_features (get_hyps gl) (get_goal gl) in
+    begin fun sigma gl ->
+      let features = Features.get_goal_features (get_hyps sigma gl) (get_goal gl) in
       Msg.notice (Hhlib.sfold (fun x -> x) ", " features);
       ltac_apply "idtac" []
     end
@@ -605,11 +601,10 @@ let hammer_transl name0 =
 
 let hammer_transl_tac () =
   try_goal_tactic
-    begin fun gl ->
+    begin fun sigma gl ->
       let env = Proofview.Goal.env gl in
-      let sigma = Proofview.Goal.sigma gl in
       let goal = get_goal gl in
-      let hyps = get_hyps gl in
+      let hyps = get_hyps sigma gl in
       let defs = get_defs env sigma in
       let name = Hh_term.get_hhdef_name goal in
       Coq_transl.remove_def name;
@@ -652,10 +647,10 @@ let hammer_hook_tac prefix name =
   and provers = [("vampire", Provers.extract_vampire_data); ("eprover", Provers.extract_eprover_data);
                  ("z3", Provers.extract_z3_data); ("cvc4", Provers.extract_cvc4_data)]
   in
-  try_goal_tactic begin fun gl ->
+  try_goal_tactic begin fun sigma gl ->
     Msg.info ("Processing theorem " ^ name ^ "...");
     try
-      if check_goal_prop gl then
+      if check_goal_prop sigma gl then
         begin
           let fopt = open_in "coqhammer.opt" in
           let str = input_line fopt in
@@ -665,7 +660,6 @@ let hammer_hook_tac prefix name =
           else if str = "gen-atp" then
             begin
               let env = Proofview.Goal.env gl in
-              let sigma = Proofview.Goal.sigma gl in
               List.iter
                 begin fun (met, n) ->
                   let str = met ^ "-" ^ string_of_int n in
@@ -679,7 +673,7 @@ let hammer_hook_tac prefix name =
                   let dir = "atp/problems/" ^ str in
                   ignore (Sys.command ("mkdir -p " ^ dir));
                   let goal = get_goal gl in
-                  let hyps = get_hyps gl in
+                  let hyps = get_hyps sigma gl in
                   let defs = get_defs env sigma in
                   let defs1 = Features.predict hyps defs goal in
                   Provers.write_atp_file (dir ^ "/" ^ name ^ ".p") defs1 hyps defs goal
@@ -710,7 +704,6 @@ let hammer_hook_tac prefix name =
                        if pid = 0 then
                          begin
                            let env = Proofview.Goal.env gl in
-                           let sigma = Proofview.Goal.sigma gl in
                            try
                              try_fun
                                begin fun () ->
